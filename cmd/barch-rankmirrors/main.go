@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"os"
 
-	rankmirrors "github.com/3rr0r-505/barch-rankmirrors/cmd"
+	rankmirrors "github.com/5pyd3r-labs/blackarch-rankmirrors/cmd"
 )
 
 func main() {

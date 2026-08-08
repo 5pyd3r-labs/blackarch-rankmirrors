@@ -1,3 +1,3 @@
-module github.com/3rr0r-505/barch-rankmirrors
+module github.com/5pyd3r-labs/blackarch-rankmirrors
 
 go 1.26.5
