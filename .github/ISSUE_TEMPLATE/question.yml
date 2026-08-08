@@ -1,0 +1,47 @@
+name: Question / Support
+description: Ask a question about usage, setup, or behavior
+title: "[Question]: "
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Have a question about how something works or how to set things
+        up? Ask below.
+
+  - type: textarea
+    id: question
+    attributes:
+      label: What's your question?
+      description: Be as specific as possible
+    validations:
+      required: true
+
+  - type: textarea
+    id: tried
+    attributes:
+      label: What have you tried so far?
+      description: Any documentation you've checked, or approaches you've already attempted
+    validations:
+      required: false
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      options:
+        - Linux
+        - macOS
+        - Windows
+        - Other
+        - Not applicable
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: I've checked the README and existing issues first
+          required: true

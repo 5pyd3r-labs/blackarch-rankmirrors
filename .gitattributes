@@ -1,0 +1,26 @@
+# ---- Line endings ----
+* text=auto eol=lf
+
+# ---- Binary files ----
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.gz binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.db binary
+*.sqlite binary
+
+# ---- Generated/vendored (excluded from GitHub language stats) ----
+go.sum linguist-generated
+Cargo.lock linguist-generated
+vendor/* linguist-vendored
+node_modules/* linguist-vendored
+*.min.js linguist-generated
+*.min.css linguist-generated
