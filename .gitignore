@@ -7,6 +7,7 @@
 # ---- Local-only convention ----
 *.local
 *.local.*
+.local/
 
 # ---- OS junk (macOS/Windows) ----
 .DS_Store

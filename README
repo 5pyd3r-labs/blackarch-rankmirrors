@@ -1,0 +1,109 @@
+barch-rankmirrors
+==================
+
+A tool for ranking BlackArch Linux pacman mirrors by actual
+reachability and response time, and optionally writing the result
+directly to /etc/pacman.d/blackarch-mirrorlist.
+
+
+WHY
+---
+
+BlackArch ships a static mirrorlist with no official ranking tool,
+unlike Arch's mirror status page or EndeavourOS's eos-rankmirrors.
+Dead or slow mirrors sit at arbitrary positions in the file, which
+means `pacman -Syu` can hang or fail on a mirror that has been
+unreachable for months.
+
+This tool fetches the current mirrorlist from blackarch.org, tests
+every mirror concurrently, ranks the reachable ones by latency, and
+writes a curated active block to the top of the mirrorlist while
+preserving the full original list below for reference.
+
+
+USAGE
+-----
+
+    barch-rankmirrors [flags]
+
+    Flags:
+        --allow-http    also test http:// mirrors, not just https://
+        --n <int>       number of top mirrors to output/write (default 5)
+        --update        write ranked mirrorlist to
+                        /etc/pacman.d/blackarch-mirrorlist (requires root)
+        --force         skip the confirmation prompt (only meaningful
+                        with --update)
+
+    Without --update, results print to stdout only. Nothing on disk
+    is touched unless you pass --update, and even then you will be
+    asked to confirm before anything is written, unless --force is
+    given.
+
+
+EXAMPLES
+--------
+
+    barch-rankmirrors
+        Test https mirrors, print top 5 to stdout.
+
+    barch-rankmirrors --allow-http --n 10
+        Widen to http+https, show top 10.
+
+    sudo barch-rankmirrors --update
+        Test, rank, prompt for confirmation, then write.
+
+    sudo barch-rankmirrors --update --force
+        Same as above, no prompt.
+
+
+HOW IT WORKS
+------------
+
+    1. fetch   - download the raw mirrorlist from
+                 https://www.blackarch.org/blackarch-mirrorlist
+    2. parse   - split into per-country groups of Server entries,
+                 tracking which lines were already active
+    3. probe   - concurrently HEAD-request each candidate mirror's
+                 blackarch.db, with a 20-worker pool and a 5 second
+                 timeout per mirror
+    4. rank    - sort reachable mirrors by response time, clamp to
+                 the requested count
+    5. render  - write a dated, country-annotated active block,
+                 followed by the full original mirrorlist,
+                 re-commented, in its original order
+    6. write   - (--update only) back up the existing mirrorlist to
+                 blackarch-mirrorlist.bak, then write the new file.
+                 Backup must succeed before the real file is
+                 touched.
+
+No mirror is ever assumed correct or malformed; a bad URL simply
+fails the probe step and is excluded from ranking. FTP, gopher, and
+similarly unsupported protocols are skipped outright — this tool
+tests http/https only.
+
+
+SAFETY
+------
+
+    - Never writes to disk without --update.
+    - Never elevates privileges itself; you must invoke it with
+      sudo. If run with --update and not root, it fails immediately
+      before doing any network work.
+    - Always backs up the existing mirrorlist before overwriting it.
+    - Confirmation is required before any write, unless --force is
+      explicitly passed.
+
+
+BUILDING
+--------
+
+    go mod tidy
+    go build -o barch-rankmirrors ./cmd/barch-rankmirrors
+
+
+LICENSE
+-------
+
+GPL-3.0-or-later. See LICENSE.
+
+
