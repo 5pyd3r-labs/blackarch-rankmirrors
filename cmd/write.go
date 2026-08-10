@@ -19,11 +19,11 @@ const backupPath = mirrorlistPath + ".bak"
 // Caller must have already verified root privileges.
 func ConfirmAndWrite(ranked []ProbeResult, full MirrorFile, force bool) error {
 	if !force {
-		fmt.Printf("Write ranked mirrorlist to %s? [y/N]: ", mirrorlistPath)
+		fmt.Printf("==> Write ranked mirrorlist to %s? [y/N]: ", mirrorlistPath)
 		reader := bufio.NewReader(os.Stdin)
 		line, _ := reader.ReadString('\n')
 		if len(line) == 0 || (line[0] != 'y' && line[0] != 'Y') {
-			fmt.Println("Aborted, nothing written.")
+			fmt.Println("[#] Aborted, nothing written.")
 			return nil
 		}
 	}
@@ -31,7 +31,7 @@ func ConfirmAndWrite(ranked []ProbeResult, full MirrorFile, force bool) error {
 	if err := backupExisting(); err != nil {
 		return fmt.Errorf("backup failed, aborting: %w", err)
 	}
-	fmt.Printf("Backed up existing file to %s\n", backupPath)
+	fmt.Printf("[#] Backed up existing file to %s\n", backupPath)
 
 	f, err := os.Create(mirrorlistPath)
 	if err != nil {
@@ -43,7 +43,7 @@ func ConfirmAndWrite(ranked []ProbeResult, full MirrorFile, force bool) error {
 		return fmt.Errorf("writing mirrorlist: %w", err)
 	}
 
-	fmt.Println("Written successfully.")
+	fmt.Println("[#] /etc/pacman.d/blackarch-mirrorlist updated successfully.")
 	return nil
 }
 

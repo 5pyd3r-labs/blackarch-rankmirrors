@@ -11,10 +11,7 @@ import (
 	"time"
 )
 
-const (
-	probeConcurrency = 20
-	probeTimeout     = 5 * time.Second
-)
+const probeConcurrency = 20
 
 // ProbeResult holds the outcome of testing a single mirror.
 type ProbeResult struct {
@@ -26,8 +23,8 @@ type ProbeResult struct {
 // ProbeMirrors tests all given mirrors concurrently for reachability
 // and response time. If allowHTTP is false, only https:// mirrors
 // are tested; http:// and any other scheme (ftp, gopher, etc.) are
-// skipped entirely.
-func ProbeMirrors(mirrors []Mirror, allowHTTP bool) []ProbeResult {
+// skipped entirely. timeout controls the per-mirror request timeout.
+func ProbeMirrors(mirrors []Mirror, allowHTTP bool, timeout time.Duration) []ProbeResult {
 	var candidates []Mirror
 	for _, m := range mirrors {
 		if isTestableURL(m.URL, allowHTTP) {
@@ -40,16 +37,15 @@ func ProbeMirrors(mirrors []Mirror, allowHTTP bool) []ProbeResult {
 	var wg sync.WaitGroup
 
 	client := &http.Client{
-		Timeout: probeTimeout,
+		Timeout: timeout,
 	}
 
 	for i, m := range candidates {
 		wg.Add(1)
-		sem <- struct{}{} // acquire slot
+		sem <- struct{}{}
 		go func(idx int, mirror Mirror) {
 			defer wg.Done()
-			defer func() { <-sem }() // release slot
-
+			defer func() { <-sem }()
 			results[idx] = probeSingle(client, mirror)
 		}(i, m)
 	}
