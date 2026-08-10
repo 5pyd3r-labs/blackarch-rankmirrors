@@ -97,3 +97,22 @@ func (mf MirrorFile) AllMirrors() []Mirror {
 	}
 	return all
 }
+
+// FilterExcludedCountries returns mirrors whose Country is not in
+// the excluded set (case-insensitive match).
+func FilterExcludedCountries(mirrors []Mirror, excluded []string) []Mirror {
+	if len(excluded) == 0 {
+		return mirrors
+	}
+	skip := make(map[string]bool, len(excluded))
+	for _, c := range excluded {
+		skip[strings.ToLower(strings.TrimSpace(c))] = true
+	}
+	var kept []Mirror
+	for _, m := range mirrors {
+		if !skip[strings.ToLower(m.Country)] {
+			kept = append(kept, m)
+		}
+	}
+	return kept
+}
