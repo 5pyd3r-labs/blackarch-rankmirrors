@@ -26,6 +26,8 @@ func main() {
 	rankAll := flag.Bool("rank-all", false, "show all reachable mirrors ranked, ignoring --n (display only, --update still uses --n)")
 	output := flag.String("output", "", "save whatever is printed to stdout to this file as well")
 	mirrorsOnly := flag.Bool("mirrors-only", false, "print only the rendered mirrorlist to stdout (no logs/table), safe to pipe into a file")
+	ipv4Only := flag.Bool("ipv4-only", false, "only test mirrors over IPv4")
+	ipv6Only := flag.Bool("ipv6-only", false, "only test mirrors over IPv6")
 	flag.Parse()
 
 	if *mirrorsOnly && *update {
@@ -35,6 +37,11 @@ func main() {
 
 	if *countryOnly != "" && *excludeCountry != "" {
 		fmt.Fprintln(os.Stderr, "[X] error: --country-only and --exclude-country are mutually exclusive")
+		os.Exit(1)
+	}
+
+	if *ipv4Only && *ipv6Only {
+		fmt.Fprintln(os.Stderr, "[X] error: --ipv4-only and --ipv6-only are mutually exclusive")
 		os.Exit(1)
 	}
 
@@ -88,6 +95,17 @@ func main() {
 	if *allowHTTP {
 		mode = "http+https"
 	}
+
+	ipVersion := ""
+	if *ipv4Only {
+		ipVersion = "4"
+	} else if *ipv6Only {
+		ipVersion = "6"
+	}
+	if ipVersion != "" {
+		fmt.Fprintf(logOut, "[+] Restricting to IPv%s only\n", ipVersion)
+	}
+
 	// after filtering (either branch), before the mode/probing lines
 	countrySet := make(map[string]bool)
 	for _, m := range all {
@@ -96,7 +114,7 @@ func main() {
 	fmt.Fprintf(logOut, "[+] Parsed %d mirrors across %d countries\n", len(all), len(countrySet))
 	fmt.Fprintf(logOut, "[#] Probing mirrors (%s)...\n", mode)
 
-	results := rankmirrors.ProbeMirrors(all, *allowHTTP, *timeout)
+	results := rankmirrors.ProbeMirrors(all, *allowHTTP, *timeout, ipVersion)
 
 	reachableCount := rankmirrors.ReachableCount(results)
 	if reachableCount == 0 {

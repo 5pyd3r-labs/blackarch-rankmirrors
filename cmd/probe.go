@@ -5,6 +5,8 @@
 package rankmirrors
 
 import (
+	"context"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -24,7 +26,7 @@ type ProbeResult struct {
 // and response time. If allowHTTP is false, only https:// mirrors
 // are tested; http:// and any other scheme (ftp, gopher, etc.) are
 // skipped entirely. timeout controls the per-mirror request timeout.
-func ProbeMirrors(mirrors []Mirror, allowHTTP bool, timeout time.Duration) []ProbeResult {
+func ProbeMirrors(mirrors []Mirror, allowHTTP bool, timeout time.Duration, ipVersion string) []ProbeResult {
 	var candidates []Mirror
 	for _, m := range mirrors {
 		if isTestableURL(m.URL, allowHTTP) {
@@ -36,9 +38,7 @@ func ProbeMirrors(mirrors []Mirror, allowHTTP bool, timeout time.Duration) []Pro
 	sem := make(chan struct{}, probeConcurrency)
 	var wg sync.WaitGroup
 
-	client := &http.Client{
-		Timeout: timeout,
-	}
+	client := newClient(timeout, ipVersion)
 
 	for i, m := range candidates {
 		wg.Add(1)
@@ -93,4 +93,25 @@ func deriveDBURL(templateURL string) string {
 		url += "/"
 	}
 	return url + "blackarch.db"
+}
+
+func newClient(timeout time.Duration, ipVersion string) *http.Client {
+	dialer := &net.Dialer{}
+
+	transport := &http.Transport{
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			forced := network
+			if ipVersion == "4" {
+				forced = "tcp4"
+			} else if ipVersion == "6" {
+				forced = "tcp6"
+			}
+			return dialer.DialContext(ctx, forced, addr)
+		},
+	}
+
+	return &http.Client{
+		Timeout:   timeout,
+		Transport: transport,
+	}
 }
