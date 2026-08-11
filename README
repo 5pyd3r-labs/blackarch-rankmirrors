@@ -27,12 +27,27 @@ USAGE
     barch-rankmirrors [flags]
 
     Flags:
-        --allow-http    also test http:// mirrors, not just https://
-        --n <int>       number of top mirrors to output/write (default 5)
-        --update        write ranked mirrorlist to
-                        /etc/pacman.d/blackarch-mirrorlist (requires root)
-        --force         skip the confirmation prompt (only meaningful
-                        with --update)
+        --allow-http           also test http:// mirrors, not just https://
+        --n <int>               number of top mirrors to output/write (default 5)
+        --rank-all              show all reachable mirrors, ignoring --n
+                                (display only; --update still uses --n)
+        --exclude-country <s>   comma-separated countries to exclude
+                                (e.g. 'China,Russia')
+        --country-only <s>      comma-separated countries to include only
+                                (mutually exclusive with --exclude-country)
+        --ipv4-only              only test mirrors over IPv4
+        --ipv6-only              only test mirrors over IPv6
+                                (mutually exclusive with each other)
+        --per-mirror-timeout <d> per-mirror probe timeout (default 5s)
+        --output <path>          save whatever is printed to stdout to
+                                this file as well
+        --mirrors-only           print only the rendered mirrorlist to
+                                stdout (logs go to stderr); safe to pipe
+        --update                write ranked mirrorlist to
+                                /etc/pacman.d/blackarch-mirrorlist
+                                (requires root)
+        --force                 skip the confirmation prompt (only
+                                meaningful with --update)
 
     Without --update, results print to stdout only. Nothing on disk
     is touched unless you pass --update, and even then you will be
@@ -49,6 +64,25 @@ EXAMPLES
     barch-rankmirrors --allow-http --n 10
         Widen to http+https, show top 10.
 
+    barch-rankmirrors --exclude-country China,Russia --n 10
+        Exclude specific countries from testing.
+
+    barch-rankmirrors --country-only India,Germany
+        Only test mirrors from specific countries.
+
+    barch-rankmirrors --rank-all
+        Show every reachable mirror, ranked, ignoring --n.
+
+    barch-rankmirrors --ipv6-only
+        Only test mirrors reachable over IPv6.
+
+    barch-rankmirrors --mirrors-only | sudo tee /etc/pacman.d/blackarch-mirrorlist
+        Run entirely without root, pipe the ranked mirrorlist
+        straight into a privileged write command.
+
+    barch-rankmirrors --output run.log
+        Save everything printed to stdout to a file as well.
+
     sudo barch-rankmirrors --update
         Test, rank, prompt for confirmation, then write.
 
@@ -63,15 +97,16 @@ HOW IT WORKS
                  https://www.blackarch.org/blackarch-mirrorlist
     2. parse   - split into per-country groups of Server entries,
                  tracking which lines were already active
-    3. probe   - concurrently HEAD-request each candidate mirror's
-                 blackarch.db, with a 20-worker pool and a 5 second
-                 timeout per mirror
-    4. rank    - sort reachable mirrors by response time, clamp to
-                 the requested count
-    5. render  - write a dated, country-annotated active block,
+    3. filter  - apply --exclude-country / --country-only if set
+    4. probe   - concurrently HEAD-request each candidate mirror's
+                 blackarch.db, with a 20-worker pool and a
+                 configurable per-mirror timeout (--per-mirror-timeout)
+    5. rank    - sort reachable mirrors by response time, clamp to
+                 the requested count (or show all with --rank-all)
+    6. render  - write a dated, country-annotated active block,
                  followed by the full original mirrorlist,
                  re-commented, in its original order
-    6. write   - (--update only) back up the existing mirrorlist to
+    7. write   - (--update only) back up the existing mirrorlist to
                  blackarch-mirrorlist.bak, then write the new file.
                  Backup must succeed before the real file is
                  touched.
@@ -89,9 +124,15 @@ SAFETY
     - Never elevates privileges itself; you must invoke it with
       sudo. If run with --update and not root, it fails immediately
       before doing any network work.
+    - --mirrors-only lets the tool run entirely rootless, printing
+      only the raw mirrorlist to stdout so it can be piped into your
+      own privileged write command instead.
     - Always backs up the existing mirrorlist before overwriting it.
     - Confirmation is required before any write, unless --force is
       explicitly passed.
+    - --mirrors-only and --update cannot be combined; --exclude-country
+      and --country-only cannot be combined; --ipv4-only and
+      --ipv6-only cannot be combined.
 
 
 BUILDING
@@ -105,5 +146,3 @@ LICENSE
 -------
 
 GPL-3.0-or-later. See LICENSE.
-
-
