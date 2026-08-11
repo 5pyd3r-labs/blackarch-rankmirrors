@@ -23,12 +23,18 @@ func main() {
 	excludeCountry := flag.String("exclude-country", "", "comma-separated list of countries to exclude (e.g. 'China,Russia')")
 	timeout := flag.Duration("per-mirror-timeout", 5*time.Second, "per-mirror probe timeout (e.g. 5s, 500ms)")
 	rankAll := flag.Bool("rank-all", false, "show all reachable mirrors ranked, ignoring --n (display only, --update still uses --n)")
-	output := flag.String("output", "", "save the full run output (everything printed to screen) to this file")
+	output := flag.String("output", "", "save whatever is printed to stdout to this file as well")
+	mirrorsOnly := flag.Bool("mirrors-only", false, "print only the rendered mirrorlist to stdout (no logs/table), safe to pipe into a file")
 	flag.Parse()
+
+	if *mirrorsOnly && *update {
+		fmt.Fprintln(os.Stderr, "[X] error: --mirrors-only and --update are mutually exclusive — use --mirrors-only to pipe into your own write command, or --update to let the tool write directly.")
+		os.Exit(1)
+	}
 
 	start := time.Now()
 
-	var out io.Writer = os.Stdout
+	var stdoutWriter io.Writer = os.Stdout
 	if *output != "" {
 		f, err := os.Create(*output)
 		if err != nil {
@@ -36,7 +42,12 @@ func main() {
 			os.Exit(1)
 		}
 		defer f.Close()
-		out = io.MultiWriter(os.Stdout, f)
+		stdoutWriter = io.MultiWriter(os.Stdout, f)
+	}
+
+	var logOut io.Writer = stdoutWriter
+	if *mirrorsOnly {
+		logOut = os.Stderr
 	}
 
 	if *update && os.Geteuid() != 0 {
@@ -44,9 +55,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	fmt.Fprintln(out)
-	fmt.Fprintf(out, "[#] Command: barch-rankmirrors %s\n", strings.Join(os.Args[1:], " "))
-	fmt.Fprintln(out, "[#] Fetching mirrorlist from blackarch.org...")
+	fmt.Fprintln(logOut)
+	fmt.Fprintf(logOut, "[#] Command: barch-rankmirrors %s\n", strings.Join(os.Args[1:], " "))
+	fmt.Fprintln(logOut, "[#] Fetching mirrorlist from blackarch.org...")
 
 	data, err := rankmirrors.FetchMirrorlist()
 	if err != nil {
@@ -60,15 +71,15 @@ func main() {
 	if *excludeCountry != "" {
 		excluded := strings.Split(*excludeCountry, ",")
 		all = rankmirrors.FilterExcludedCountries(all, excluded)
-		fmt.Fprintf(out, "[-] Excluding countries: %s\n", *excludeCountry)
+		fmt.Fprintf(logOut, "[-] Excluding countries: %s\n", *excludeCountry)
 	}
 
 	mode := "https-only"
 	if *allowHTTP {
 		mode = "http+https"
 	}
-	fmt.Fprintf(out, "[+] Parsed %d mirrors across %d countries\n", len(all), len(mf.Order))
-	fmt.Fprintf(out, "[#] Probing mirrors (%s)...\n", mode)
+	fmt.Fprintf(logOut, "[+] Parsed %d mirrors across %d countries\n", len(all), len(mf.Order))
+	fmt.Fprintf(logOut, "[#] Probing mirrors (%s)...\n", mode)
 
 	results := rankmirrors.ProbeMirrors(all, *allowHTTP, *timeout)
 
@@ -85,21 +96,24 @@ func main() {
 		displayed = rankmirrors.RankMirrors(results, reachableCount)
 	}
 
-	fmt.Fprintf(out, "\n==> %d of %d tested mirrors reachable, showing top %d:\n\n", reachableCount, len(results), len(displayed))
-	fmt.Fprintf(out, "%-6s %-10s %-15s %s\n", "RANK", "TIME", "COUNTRY", "MIRROR")
+	fmt.Fprintf(logOut, "\n==> %d of %d tested mirrors reachable, showing top %d:\n\n", reachableCount, len(results), len(displayed))
+	fmt.Fprintf(logOut, "%-6s %-10s %-15s %s\n", "RANK", "TIME", "COUNTRY", "MIRROR")
 	for i, r := range displayed {
-		fmt.Fprintf(out, "%-6d %-10s %-15s %s\n", i+1, r.Latency.Round(time.Millisecond), r.Mirror.Country, r.Mirror.URL)
+		fmt.Fprintf(logOut, "%-6d %-10s %-15s %s\n", i+1, r.Latency.Round(time.Millisecond), r.Mirror.Country, r.Mirror.URL)
 	}
 
 	elapsed := time.Since(start)
-	fmt.Fprintf(out, "\n[#] Completed in %s\n", elapsed.Round(time.Millisecond))
+	fmt.Fprintf(logOut, "\n[#] Completed in %s\n", elapsed.Round(time.Millisecond))
 
-	if *output != "" {
-		fmt.Printf("[#] Output written to %s\n", *output)
+	if *mirrorsOnly {
+		if err := rankmirrors.RenderMirrorlist(stdoutWriter, ranked, mf); err != nil {
+			fmt.Fprintln(os.Stderr, "[X] error rendering mirrorlist:", err)
+			os.Exit(1)
+		}
 	}
 
 	if !*update {
-		fmt.Fprintln(out, "[*] Run with --update to write to /etc/pacman.d/blackarch-mirrorlist.")
+		fmt.Fprintln(logOut, "[*] Run with --update to write to /etc/pacman.d/blackarch-mirrorlist.")
 		return
 	}
 
