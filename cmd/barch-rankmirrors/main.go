@@ -21,6 +21,7 @@ func main() {
 	update := flag.Bool("update", false, "write ranked mirrorlist to /etc/pacman.d/blackarch-mirrorlist (requires root)")
 	force := flag.Bool("force", false, "skip confirmation prompt (only meaningful with --update)")
 	excludeCountry := flag.String("exclude-country", "", "comma-separated list of countries to exclude (e.g. 'China,Russia')")
+	countryOnly := flag.String("country-only", "", "comma-separated list of countries to include only (e.g. 'India,Germany')")
 	timeout := flag.Duration("per-mirror-timeout", 5*time.Second, "per-mirror probe timeout (e.g. 5s, 500ms)")
 	rankAll := flag.Bool("rank-all", false, "show all reachable mirrors ranked, ignoring --n (display only, --update still uses --n)")
 	output := flag.String("output", "", "save whatever is printed to stdout to this file as well")
@@ -29,6 +30,11 @@ func main() {
 
 	if *mirrorsOnly && *update {
 		fmt.Fprintln(os.Stderr, "[X] error: --mirrors-only and --update are mutually exclusive — use --mirrors-only to pipe into your own write command, or --update to let the tool write directly.")
+		os.Exit(1)
+	}
+
+	if *countryOnly != "" && *excludeCountry != "" {
+		fmt.Fprintln(os.Stderr, "[X] error: --country-only and --exclude-country are mutually exclusive")
 		os.Exit(1)
 	}
 
@@ -72,13 +78,22 @@ func main() {
 		excluded := strings.Split(*excludeCountry, ",")
 		all = rankmirrors.FilterExcludedCountries(all, excluded)
 		fmt.Fprintf(logOut, "[-] Excluding countries: %s\n", *excludeCountry)
+	} else if *countryOnly != "" {
+		included := strings.Split(*countryOnly, ",")
+		all = rankmirrors.FilterIncludedCountries(all, included)
+		fmt.Fprintf(logOut, "[+] Including only countries: %s\n", *countryOnly)
 	}
 
 	mode := "https-only"
 	if *allowHTTP {
 		mode = "http+https"
 	}
-	fmt.Fprintf(logOut, "[+] Parsed %d mirrors across %d countries\n", len(all), len(mf.Order))
+	// after filtering (either branch), before the mode/probing lines
+	countrySet := make(map[string]bool)
+	for _, m := range all {
+		countrySet[m.Country] = true
+	}
+	fmt.Fprintf(logOut, "[+] Parsed %d mirrors across %d countries\n", len(all), len(countrySet))
 	fmt.Fprintf(logOut, "[#] Probing mirrors (%s)...\n", mode)
 
 	results := rankmirrors.ProbeMirrors(all, *allowHTTP, *timeout)

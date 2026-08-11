@@ -116,3 +116,22 @@ func FilterExcludedCountries(mirrors []Mirror, excluded []string) []Mirror {
 	}
 	return kept
 }
+
+// FilterIncludedCountries returns only mirrors whose Country is in
+// the included set (case-insensitive match).
+func FilterIncludedCountries(mirrors []Mirror, included []string) []Mirror {
+	if len(included) == 0 {
+		return mirrors
+	}
+	keep := make(map[string]bool, len(included))
+	for _, c := range included {
+		keep[strings.ToLower(strings.TrimSpace(c))] = true
+	}
+	var kept []Mirror
+	for _, m := range mirrors {
+		if keep[strings.ToLower(m.Country)] {
+			kept = append(kept, m)
+		}
+	}
+	return kept
+}
