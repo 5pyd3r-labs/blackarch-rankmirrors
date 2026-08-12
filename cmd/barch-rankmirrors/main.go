@@ -123,11 +123,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	ranked := rankmirrors.RankMirrors(results, *n)
+	ranked := rankmirrors.RankMirrorsRefined(results, *n, *timeout, ipVersion)
 
 	displayed := ranked
 	if *rankAll {
-		displayed = rankmirrors.RankMirrors(results, reachableCount)
+		displayed = rankmirrors.RankAllRefined(results, *timeout, ipVersion)
 	}
 
 	fmt.Fprintf(logOut, "\n==> %d of %d tested mirrors reachable, showing top %d:\n\n", reachableCount, len(results), len(displayed))

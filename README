@@ -113,21 +113,59 @@ HOW IT WORKS
                  mirrors get a raw daemon handshake (greeting,
                  version and digest negotiation, module request) to
                  confirm reachability without a full file sync
-    5. rank    - sort reachable mirrors by response time, clamp to
-                 the requested count (or show all with --rank-all)
-    6. render  - write a dated, country-annotated active block,
+    5. refine  - the most promising mirrors from the probe step (up
+                 to 3x the requested count) are re-probed 3 times each
+                 at higher concurrency, and ranked by the median of
+                 those samples rather than a single reading. A mirror
+                 that fails every re-probe is dropped as unreachable;
+                 one that fails only some attempts is still ranked,
+                 but pushed down for the flakiness. --rank-all applies
+                 the same refinement to its top 30 mirrors; the rest
+                 keep their single-probe latency.
+    6. rank    - sort refined mirrors by median response time, clamp
+                 to the requested count
+    7. render  - write a dated, country-annotated active block,
                  followed by the full original mirrorlist,
                  re-commented, in its original order
-    7. write   - (--update only) back up the existing mirrorlist to
+    8. write   - (--update only) back up the existing mirrorlist to
                  blackarch-mirrorlist.bak, then write the new file.
-                 Backup must succeed before the real file is
-                 touched.
+                 Backup must succeed before the real file is touched.
 
 No mirror is ever assumed correct or malformed; a bad URL simply
 fails the probe step and is excluded from ranking. https and http
 are tested via net/http; rsync is tested via a hand-written daemon
 handshake (no third-party dependency). FTP, gopher, and similarly
 unsupported protocols are skipped outright.
+
+
+RANKING
+-------
+
+A single probe is noisy — one slow DNS lookup or a momentary
+network blip shouldn't rank a genuinely fast mirror below one that
+just happened to get lucky. To avoid that, ranking happens in two
+phases.
+
+The first phase probes every candidate mirror once, exactly as
+described above. From those results, the most promising mirrors
+(up to 3x the requested count) move on to a second phase, where
+each is re-probed 3 times at higher concurrency. The median of
+those 3 samples becomes that mirror's real latency for ranking
+purposes, rather than trusting a single reading.
+
+A mirror that fails every re-probe in phase two is dropped as
+unreachable. One that succeeds only some of the time is still
+ranked, but its failures count as a heavy penalty, so a flaky
+mirror is pushed toward the bottom rather than erased or scored
+only on its best moments.
+
+--rank-all applies this same refinement to its fastest 30 mirrors;
+anything beyond that keeps its single-probe latency from phase one,
+since refining every reachable mirror on an unfiltered run would be
+expensive for little practical benefit.
+
+This is not configurable — it is a fixed part of how the tool
+ranks mirrors, not something the person running it needs to decide.
 
 
 SAFETY

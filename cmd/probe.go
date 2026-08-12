@@ -8,12 +8,17 @@ import (
 	"context"
 	"net"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"time"
 )
 
-const probeConcurrency = 20
+const (
+	probeConcurrency  = 20
+	phase2Concurrency = 30
+	phase2Samples     = 5
+)
 
 // ProbeResult holds the outcome of testing a single mirror.
 type ProbeResult struct {
@@ -49,12 +54,7 @@ func ProbeMirrors(mirrors []Mirror, allowHTTP bool, allowRsync bool, timeout tim
 		go func(idx int, mirror Mirror) {
 			defer wg.Done()
 			defer func() { <-sem }()
-
-			if strings.HasPrefix(mirror.URL, "rsync://") {
-				results[idx] = probeRsync(mirror, timeout, ipVersion)
-			} else {
-				results[idx] = probeSingle(client, mirror)
-			}
+			results[idx] = probeOnce(client, mirror, timeout, ipVersion)
 		}(i, m)
 	}
 
@@ -126,4 +126,70 @@ func newClient(timeout time.Duration, ipVersion string) *http.Client {
 		Timeout:   timeout,
 		Transport: transport,
 	}
+}
+
+// probeOnce dispatches a single probe attempt to the correct
+// protocol handler based on the mirror's URL scheme.
+func probeOnce(client *http.Client, m Mirror, timeout time.Duration, ipVersion string) ProbeResult {
+	if strings.HasPrefix(m.URL, "rsync://") {
+		return probeRsync(m, timeout, ipVersion)
+	}
+	return probeSingle(client, m)
+}
+
+// reprobePenalty is the latency assigned to a failed re-probe
+// attempt, so a flaky mirror is pushed down in ranking rather than
+// dropped or scored using only its successful samples.
+const reprobePenalty = 60 * time.Second
+
+// RefineWithMedian re-probes each mirror in subset phase2Samples
+// times concurrently and replaces its latency with the median of
+// those samples. A failed re-probe counts as reprobePenalty rather
+// than being discarded, so flakiness is reflected honestly rather
+// than erased.
+func RefineWithMedian(subset []ProbeResult, timeout time.Duration, ipVersion string) []ProbeResult {
+	client := newClient(timeout, ipVersion)
+	sem := make(chan struct{}, phase2Concurrency)
+	var wg sync.WaitGroup
+
+	refined := make([]ProbeResult, len(subset))
+
+	for i, r := range subset {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(idx int, res ProbeResult) {
+			defer wg.Done()
+			defer func() { <-sem }()
+
+			samples := make([]time.Duration, phase2Samples)
+			anySucceeded := false
+			for s := 0; s < phase2Samples; s++ {
+				attempt := probeOnce(client, res.Mirror, timeout, ipVersion)
+				if attempt.Reachable {
+					samples[s] = attempt.Latency
+					anySucceeded = true
+				} else {
+					samples[s] = reprobePenalty
+				}
+			}
+
+			refined[idx] = ProbeResult{
+				Mirror:    res.Mirror,
+				Reachable: anySucceeded,
+				Latency:   median(samples),
+			}
+		}(i, r)
+	}
+
+	wg.Wait()
+	return refined
+}
+
+// median returns the middle value of a sorted copy of durations.
+// Assumes an odd, non-empty slice (phase2Samples is fixed at 3).
+func median(durations []time.Duration) time.Duration {
+	sorted := make([]time.Duration, len(durations))
+	copy(sorted, durations)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i] < sorted[j] })
+	return sorted[len(sorted)/2]
 }
