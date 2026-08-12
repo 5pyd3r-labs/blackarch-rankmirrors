@@ -24,12 +24,15 @@ type ProbeResult struct {
 
 // ProbeMirrors tests all given mirrors concurrently for reachability
 // and response time. If allowHTTP is false, only https:// mirrors
-// are tested; http:// and any other scheme (ftp, gopher, etc.) are
-// skipped entirely. timeout controls the per-mirror request timeout.
-func ProbeMirrors(mirrors []Mirror, allowHTTP bool, timeout time.Duration, ipVersion string) []ProbeResult {
+// are tested; http:// is included when allowHTTP is true. rsync://
+// mirrors are only tested when allowRsync is true, and are probed
+// via a raw daemon handshake (see rsync.go) rather than the shared
+// http.Client. Any other scheme is skipped entirely. timeout
+// controls the per-mirror request timeout.
+func ProbeMirrors(mirrors []Mirror, allowHTTP bool, allowRsync bool, timeout time.Duration, ipVersion string) []ProbeResult {
 	var candidates []Mirror
 	for _, m := range mirrors {
-		if isTestableURL(m.URL, allowHTTP) {
+		if isTestableURL(m.URL, allowHTTP, allowRsync) {
 			candidates = append(candidates, m)
 		}
 	}
@@ -46,7 +49,12 @@ func ProbeMirrors(mirrors []Mirror, allowHTTP bool, timeout time.Duration, ipVer
 		go func(idx int, mirror Mirror) {
 			defer wg.Done()
 			defer func() { <-sem }()
-			results[idx] = probeSingle(client, mirror)
+
+			if strings.HasPrefix(mirror.URL, "rsync://") {
+				results[idx] = probeRsync(mirror, timeout, ipVersion)
+			} else {
+				results[idx] = probeSingle(client, mirror)
+			}
 		}(i, m)
 	}
 
@@ -54,16 +62,19 @@ func ProbeMirrors(mirrors []Mirror, allowHTTP bool, timeout time.Duration, ipVer
 	return results
 }
 
-// isTestableURL filters out unsupported protocols and, unless
-// allowHTTP is set, plain http:// mirrors too.
-func isTestableURL(url string, allowHTTP bool) bool {
+// isTestableURL filters out unsupported protocols. https:// is
+// always testable; http:// and rsync:// are gated behind their
+// respective allow flags.
+func isTestableURL(url string, allowHTTP bool, allowRsync bool) bool {
 	switch {
 	case strings.HasPrefix(url, "https://"):
 		return true
 	case strings.HasPrefix(url, "http://"):
 		return allowHTTP
+	case strings.HasPrefix(url, "rsync://"):
+		return allowRsync
 	default:
-		return false // ftp://, ftpes://, gopher://, rsync://, etc.
+		return false // ftp://, ftpes://, gopher://, etc.
 	}
 }
 
@@ -101,9 +112,10 @@ func newClient(timeout time.Duration, ipVersion string) *http.Client {
 	transport := &http.Transport{
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			forced := network
-			if ipVersion == "4" {
+			switch ipVersion {
+			case "4":
 				forced = "tcp4"
-			} else if ipVersion == "6" {
+			case "6":
 				forced = "tcp6"
 			}
 			return dialer.DialContext(ctx, forced, addr)

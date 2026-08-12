@@ -27,27 +27,29 @@ USAGE
     barch-rankmirrors [flags]
 
     Flags:
-        --allow-http           also test http:// mirrors, not just https://
-        --n <int>               number of top mirrors to output/write (default 5)
-        --rank-all              show all reachable mirrors, ignoring --n
+        --allow-http             also test http:// mirrors, not just https://
+        --allow-rsync            also test rsync:// mirrors, via a raw
+                                 daemon handshake
+        --n <int>                number of top mirrors to output/write (default 5)
+        --rank-all               show all reachable mirrors, ignoring --n
                                 (display only; --update still uses --n)
-        --exclude-country <s>   comma-separated countries to exclude
-                                (e.g. 'China,Russia')
-        --country-only <s>      comma-separated countries to include only
-                                (mutually exclusive with --exclude-country)
+        --exclude-country <s>    comma-separated countries to exclude
+                                 (e.g. 'China,Russia')
+        --country-only <s>       comma-separated countries to include only
+                                 (mutually exclusive with --exclude-country)
         --ipv4-only              only test mirrors over IPv4
         --ipv6-only              only test mirrors over IPv6
-                                (mutually exclusive with each other)
+                                 (mutually exclusive with each other)
         --per-mirror-timeout <d> per-mirror probe timeout (default 5s)
         --output <path>          save whatever is printed to stdout to
-                                this file as well
+                                 this file as well
         --mirrors-only           print only the rendered mirrorlist to
-                                stdout (logs go to stderr); safe to pipe
-        --update                write ranked mirrorlist to
-                                /etc/pacman.d/blackarch-mirrorlist
-                                (requires root)
-        --force                 skip the confirmation prompt (only
-                                meaningful with --update)
+                                 stdout (logs go to stderr); safe to pipe
+        --update                 write ranked mirrorlist to
+                                 /etc/pacman.d/blackarch-mirrorlist
+                                 (requires root)
+        --force                  skip the confirmation prompt (only
+                                 meaningful with --update)
 
     Without --update, results print to stdout only. Nothing on disk
     is touched unless you pass --update, and even then you will be
@@ -63,6 +65,12 @@ EXAMPLES
 
     barch-rankmirrors --allow-http --n 10
         Widen to http+https, show top 10.
+
+    barch-rankmirrors --allow-rsync
+        Also test rsync:// mirrors alongside https.
+
+    barch-rankmirrors --allow-http --allow-rsync
+        Test https, http, and rsync mirrors together.
 
     barch-rankmirrors --exclude-country China,Russia --n 10
         Exclude specific countries from testing.
@@ -98,9 +106,13 @@ HOW IT WORKS
     2. parse   - split into per-country groups of Server entries,
                  tracking which lines were already active
     3. filter  - apply --exclude-country / --country-only if set
-    4. probe   - concurrently HEAD-request each candidate mirror's
-                 blackarch.db, with a 20-worker pool and a
-                 configurable per-mirror timeout (--per-mirror-timeout)
+    4. probe   - concurrently test each candidate mirror, with a
+                 20-worker pool and a configurable per-mirror
+                 timeout (--per-mirror-timeout). https/http mirrors
+                 are HEAD-requested against blackarch.db; rsync
+                 mirrors get a raw daemon handshake (greeting,
+                 version and digest negotiation, module request) to
+                 confirm reachability without a full file sync
     5. rank    - sort reachable mirrors by response time, clamp to
                  the requested count (or show all with --rank-all)
     6. render  - write a dated, country-annotated active block,
@@ -112,9 +124,10 @@ HOW IT WORKS
                  touched.
 
 No mirror is ever assumed correct or malformed; a bad URL simply
-fails the probe step and is excluded from ranking. FTP, gopher, and
-similarly unsupported protocols are skipped outright — this tool
-tests http/https only.
+fails the probe step and is excluded from ranking. https and http
+are tested via net/http; rsync is tested via a hand-written daemon
+handshake (no third-party dependency). FTP, gopher, and similarly
+unsupported protocols are skipped outright.
 
 
 SAFETY
@@ -133,6 +146,8 @@ SAFETY
     - --mirrors-only and --update cannot be combined; --exclude-country
       and --country-only cannot be combined; --ipv4-only and
       --ipv6-only cannot be combined.
+    - --ipv4-only / --ipv6-only apply consistently across all
+      protocols, including rsync.
 
 
 BUILDING

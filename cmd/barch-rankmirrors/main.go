@@ -17,6 +17,7 @@ import (
 
 func main() {
 	allowHTTP := flag.Bool("allow-http", false, "also test http:// mirrors, not just https://")
+	allowRsync := flag.Bool("allow-rsync", false, "also test rsync:// mirrors, via a raw daemon handshake")
 	n := flag.Int("n", 5, "number of top mirrors to output/write")
 	update := flag.Bool("update", false, "write ranked mirrorlist to /etc/pacman.d/blackarch-mirrorlist (requires root)")
 	force := flag.Bool("force", false, "skip confirmation prompt (only meaningful with --update)")
@@ -114,11 +115,11 @@ func main() {
 	fmt.Fprintf(logOut, "[+] Parsed %d mirrors across %d countries\n", len(all), len(countrySet))
 	fmt.Fprintf(logOut, "[#] Probing mirrors (%s)...\n", mode)
 
-	results := rankmirrors.ProbeMirrors(all, *allowHTTP, *timeout, ipVersion)
+	results := rankmirrors.ProbeMirrors(all, *allowHTTP, *allowRsync, *timeout, ipVersion)
 
 	reachableCount := rankmirrors.ReachableCount(results)
 	if reachableCount == 0 {
-		fmt.Fprintln(os.Stderr, "[X] error: no reachable mirrors found. Try --allow-http, or check your connection.")
+		fmt.Fprintln(os.Stderr, "[X] error: no reachable mirrors found.")
 		os.Exit(1)
 	}
 
